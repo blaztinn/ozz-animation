@@ -68,6 +68,7 @@ class AdditiveBlendSampleApplication : public ozz::sample::Application {
  public:
   AdditiveBlendSampleApplication()
       : base_weight_(0.f),
+        root_joint_rotation_(0.f),
         additive_weigths_{.3f, .9f},
         auto_animate_weights_(true) {}
 
@@ -102,6 +103,14 @@ class AdditiveBlendSampleApplication : public ozz::sample::Application {
     layers[0].transform = make_span(locals_);
     layers[0].weight = base_weight_;
     layers[0].joint_weights = make_span(base_joint_weights_);
+
+    auto& rotation = const_cast<ozz::math::SoaQuaternion&>(skeleton_.joint_rest_poses()[0].rotation);
+    ozz::math::Quaternion q = ozz::math::Quaternion::FromEuler(0, 0, root_joint_rotation_);
+    // Set identity
+    rotation.x = ozz::math::SetI(rotation.x, ozz::math::simd_float4::Load1(q.x), 0);
+    rotation.y = ozz::math::SetI(rotation.y, ozz::math::simd_float4::Load1(q.y), 0);
+    rotation.z = ozz::math::SetI(rotation.z, ozz::math::simd_float4::Load1(q.z), 0);
+    rotation.w = ozz::math::SetI(rotation.w, ozz::math::simd_float4::Load1(q.w), 0);
 
     // The two additive layers (curl and splay) are blended on top of the main
     // layer.
@@ -234,6 +243,22 @@ class AdditiveBlendSampleApplication : public ozz::sample::Application {
       // This is usually not needed, animation address on the stack is the same
       // each loop, hence creating an issue as animation content is changing.
       context_.Invalidate();
+
+      if (i == 0) { // splay animation
+        // Rotate joint for 90 degrees around Y
+        auto& rotation = additive_locals_[i][0].rotation;
+        rotation.x = ozz::math::SetI(rotation.x, ozz::math::simd_float4::Load1(0), 0);
+        rotation.y = ozz::math::SetI(rotation.y, ozz::math::simd_float4::Load1(0.707f), 0);
+        rotation.z = ozz::math::SetI(rotation.z, ozz::math::simd_float4::Load1(0), 0);
+        rotation.w = ozz::math::SetI(rotation.w, ozz::math::simd_float4::Load1(0.707f), 0);
+      } else { // curl animation
+        // Rotate joint for 90 degrees around Z
+        auto& rotation = additive_locals_[i][0].rotation;
+        rotation.x = ozz::math::SetI(rotation.x, ozz::math::simd_float4::Load1(0), 0);
+        rotation.y = ozz::math::SetI(rotation.y, ozz::math::simd_float4::Load1(0), 0);
+        rotation.z = ozz::math::SetI(rotation.z, ozz::math::simd_float4::Load1(0.707f), 0);
+        rotation.w = ozz::math::SetI(rotation.w, ozz::math::simd_float4::Load1(0.707f), 0);
+      }
     }
 
     return true;
@@ -259,7 +284,10 @@ class AdditiveBlendSampleApplication : public ozz::sample::Application {
         std::memcpy(weights.data(), additive_weigths_,
                     sizeof(additive_weigths_));
 
-        std::sprintf(label, "Weights\nCurl: %.2f\nSplay: %.2f",
+        std::sprintf(label, "Root (X): %.2f", root_joint_rotation_);
+        _im_gui->DoSlider(label, 0.f, 1.5708f, &root_joint_rotation_, 1.f);
+
+        std::sprintf(label, "Weights\nCurl (Z): %.2f\nSplay (Y): %.2f",
                      additive_weigths_[kCurl], additive_weigths_[kSplay]);
         if (_im_gui->DoSlider2D(label, {{0.f, 0.f}}, {{1.f, 1.f}}, &weights)) {
           auto_animate_weights_ = false;  // User interacted.
@@ -324,6 +352,8 @@ class AdditiveBlendSampleApplication : public ozz::sample::Application {
 
   // Blending weight of the base animation layer.
   float base_weight_;
+
+  float root_joint_rotation_;
 
   // Poses of local transforms as sampled from curl and splay animations.
   // They are sampled during initialization, as a single pose is used.
